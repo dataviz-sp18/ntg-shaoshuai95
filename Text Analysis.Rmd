@@ -1,0 +1,227 @@
+---
+title: "Text Analysis: Situational Factors in Teenagers' Moral Judgments"
+author: "Shuai Shao"
+date: "5/28/2018"
+output: html_document
+---
+##Introduction
+
+This assignment is part of my [final project](https://github.com/uc-dataviz/fp-shuai-shao/blob/master/Situational_Factors_in_Teenagers__Moral_Judgments.html). I aim to explore how teenagers make moral judgments and decision-making concerning their countries and their best friends. Participants (teenagers aging from 15 to 18 years old) were randomly assigned to either the Patriotism or the Friendship condition, in which the story protagonist came across moral dilemmas that either their countries or their friends cheated in the Olympics game. In one scenario they told a lie to protect their friends/countries and in another scenario, they told the truth to expose their countries/friends.
+
+They were asked to choose what they would like to do (tell a lie/truth/something else) if they were the protagonist, how they classify the protagonist's statement (as a lie/truth/something else), how they judge the statement (on a 7-point Likert scale), and how they justified their judgment. 
+
+##Data Visualization
+
+```{r read data, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(haven)
+library(rvest)
+library(tidytext)
+library(tidyr)
+library(dplyr)
+library(reshape2)
+library(SnowballC)
+library(tm)
+library(wordcloud2)
+
+set.seed(1234)
+theme_set(theme_minimal())
+
+dataall <- read_sav("Vancouver+Hangzhou_2018April.sav") %>%
+  select(1,5,18,30,41)
+```
+
+###Lying Condition
+
+####Word Frequency
+```{r justifications_lying, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+L_justification <- dataall %>% select(4) 
+L_justification$Justification_1d_exact<-removePunctuation(L_justification$Justification_1d_exact)
+List <- strsplit(L_justification$Justification_1d_exact, " ")
+
+L_text <- data.frame(word=unlist(List)) %>% 
+  filter(word!="") 
+  
+L_text$word = as.character(L_text$word)
+L_text$word <- tolower(L_text$word)
+
+mystopwords <- c(stopwords('english'), "dont", "stephani","although")
+mystopwords <- data.frame(word=unlist(mystopwords))
+L_cleaned <- L_text %>%
+  anti_join(mystopwords) 
+
+#Substitute the words that "Stop_words" failed to recognize
+L_cleaned$stem <- stemDocument(L_cleaned$word)
+L_cleaned$stem <- gsub('told', 'tell', L_cleaned$stem)
+L_cleaned$stem <- gsub('said', 'say', L_cleaned$stem)
+
+L_cleaned%>%
+#Count the words
+  count(stem, sort = TRUE) %>%
+  mutate(top = seq_along(stem)) %>%
+#Filter 15 most frequent words
+  filter(top <= 15) %>%
+#Reorder the words
+  mutate(stem = reorder(stem, n)) %>% 
+#Visualize the outcome
+  ggplot(aes(stem, n)) +
+  geom_col(show.legend = FALSE, fill = "green") +
+  geom_text(aes(label = stem), hjust = "right", size = 4) +
+  coord_flip() +
+  labs(x = "Word", 
+       y = "Word Frequency",
+       title = "The Most Common Word Stems in Justifications")
+```
+
+In the lying condition, "friend" and "lie" are two most frequent vocabularies in participants' justification, they were concerned more about their "friend" rather the "country", although the numbers of participants assigned to the Patriotism condition and the Friendship condition are almost equal. Second, they are more likely to judge the statement from a dichotic perspective, thinking about the "good" and "bad". 
+
+Other high-frequency vocabularies involve **fair** (the consideration of fairness and veracity), **drug** (the athlete in the story took the performance-enhancing drug, which means participants considered about the contextual factors when making the moral judgments), protect,etc.
+
+####Word Cloud
+
+```{r wordcloud_lying,echo=FALSE, message=FALSE, warning=FALSE}
+L_cloud <-
+  L_cleaned %>%
+  select(1) %>%
+  group_by(word) %>%
+  count()
+
+wordcloud2(L_cloud, size=1.6, color='random-dark')
+```
+
+The word cloud is another way to visualize the justifications, from which we can see other most frequent vocabularies besides the fifteen I listed out above. I used [**wordcloud2**](https://cran.r-project.org/web/packages/wordcloud2/vignettes/wordcloud.html) package. It is an interactive word cloud that allows users to know the frequency of each word by hovering.
+
+####Sentiment Analysis
+
+```{r sentiment analysis_1, echo=FALSE, message=FALSE, warning=FALSE}
+#Generate data frame with sentiment derived from the NRC
+L_nrc <- L_cleaned %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  group_by(sentiment)
+
+L_nrc %>%
+  #Summarize count per word
+  ungroup %>%
+  count(word, sentiment) %>%
+  #Highest freq on top
+  arrange(desc(n)) %>% 
+  #Identify rank within group
+  group_by(sentiment) %>% # 
+  mutate(top = seq_along(word)) %>%
+  #Retain top 8 frequent words
+  filter(top <= 8) %>%
+  #Create barplot
+  ggplot(aes(x = -top, y = n, fill = sentiment)) + 
+  geom_col(color = "black") +
+  #Print words in plot instead of as axis labels
+  geom_text(aes(label = word), hjust = "left", nudge_y = 5, size = 2) +
+  labs(title = "Most frequent words in Justifications (lying condition)",
+       x = NULL,
+       y = "Word count") +
+  facet_wrap( ~ sentiment, ncol = 5) +
+  coord_flip() +
+  theme(legend.position = "none",
+        #Rotate x text
+        axis.text.x = element_text(angle = 15, hjust = 1),
+        #Remove tick marks and text on y-axis
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())
+```
+
+Further, I analyzed the most frequent word by sentiment (anger, anticipation, disgust, fear, joy, negative, positive, sadness, surprise, and trust). The sentiment analysis will help us understand the participants' emotion during the moral judgments and decision-making.
+
+###Truth-Telling Condition
+
+####Word Frequency
+
+```{r justifications_truth-telling, echo=FALSE, warning=FALSE,message=FALSE}
+T_justification <- dataall %>% select(5) 
+T_justification$Justification_2d_exact<-removePunctuation(T_justification$justification_2d_exact)
+List2 <- strsplit(T_justification$Justification_2d_exact, " ")
+
+T_text <- data.frame(word=unlist(List2)) %>% 
+  filter(word!="") 
+  
+T_text$word = as.character(T_text$word)
+T_text$word <- tolower(T_text$word)
+
+mystopwords <- c(stopwords('english'), "dont", "stephani","although","will","may")
+mystopwords <- data.frame(word=unlist(mystopwords))
+T_cleaned <- T_text %>%
+  anti_join(mystopwords) 
+
+#Substitute the words that "Stop_words" failed to recognize
+T_cleaned$stem <- stemDocument(T_cleaned$word)
+T_cleaned$stem <- gsub('told', 'tell', T_cleaned$stem)
+T_cleaned$stem <- gsub('said', 'say', T_cleaned$stem)
+T_cleaned$stem <- gsub('friendship', 'friend', T_cleaned$stem)
+T_cleaned$stem <- gsub('best', 'good', T_cleaned$stem)
+
+T_cleaned%>%
+#Count the words
+  count(stem, sort = TRUE) %>%
+  mutate(top = seq_along(stem)) %>%
+#Filter 15 most frequent words
+  filter(top <= 15) %>%
+#Reorder the words
+  mutate(stem = reorder(stem, n)) %>% 
+#Visualize the outcome
+  ggplot(aes(stem, n)) +
+  geom_col(show.legend = FALSE, fill = "green") +
+  geom_text(aes(label = stem), hjust = "right", size = 4) +
+  coord_flip() +
+  labs(x = "Word", 
+       y = "Word Frequency",
+       title = "The Most Common Word Stems in Justifications")
+```
+
+In the truth-telling condition, "friend" and "good" are two most frequent vocabularies in participants' justification, they were concerned more about their "friend" rather the "country", parallel to our previous findings in the lying condition. 
+
+####Sentiment Analysis
+
+```{r sentimen_truth, ,echo=FALSE, message=FALSE, warning=FALSE}
+#Generate data frame with sentiment derived from the NRC
+T_nrc <- T_cleaned %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  group_by(sentiment)
+
+T_nrc %>%
+  #Summarize count per word
+  ungroup %>%
+  count(word, sentiment) %>%
+  #Highest freq on top
+  arrange(desc(n)) %>% 
+  #Identify rank within group
+  group_by(sentiment) %>% # 
+  mutate(top = seq_along(word)) %>%
+  #Retain top 8 frequent words
+  filter(top <= 8) %>%
+  #Create barplot
+  ggplot(aes(x = -top, y = n, fill = sentiment)) + 
+  geom_col(color = "black") +
+  #Print words in plot instead of as axis labels
+  geom_text(aes(label = word), hjust = "left", nudge_y = 5, size = 2) +
+  labs(title = "Most frequent words in Justifications (truth-telling condition)",
+       x = NULL,
+       y = "Word count") +
+  facet_wrap( ~ sentiment, ncol = 5) +
+  coord_flip() +
+  theme(legend.position = "none",
+        #Rotate x text
+        axis.text.x = element_text(angle = 15, hjust = 1),
+        #Remove tick marks and text on y-axis
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())
+```
+
+From the sentiment analysis, we can see the most frequent words in each category. "Friend" and "Truth" are two most important words reflecting the participants' attitude and values, similar to our previous findings in the Word Frequency part.
+
+###Discussion
+
+In sum, I used three technology to visualize participants' justifications, namely the word frequency, the (interactive) word cloud and the sentiment analysis. These techniques will help us the most important considerations and values when participants are making moral judgments. It will help us comprehend the process of moral decision-making. However, as the **wordcloud2** is still under the development, there exists a problem that the second wordcloud cannot be displayed normally and functionally in the html output, though it works well when I run the r-chunks in the .rmd file. Therefore, I removed the wordcloud from the Truth-Telling scenario. 
